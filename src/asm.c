@@ -1,4 +1,10 @@
-﻿#include "asm.h"
+﻿// TASKS:
+// [x] - support comments
+// [x] - support R0-R15 and P0-P3 strings as register parameters
+// [x] - support numeric literals, %00000001 for binary, $C for hex, 0 for decimal
+// [ ] - support label names for jumps
+
+#include "asm.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -86,10 +92,11 @@ Instruction instructions[] =
 
 unsigned char code[MAX_CODE];
 int code_pos = 0;
+int line_num = 1;
 
 static void error(const char* msg)
 {
-    printf("Error: %s\n", msg);
+    printf("Error at line %d: %s\n", line_num, msg);
     exit(1);
 }
 static void print_version()
@@ -140,22 +147,87 @@ static void assemble_file(const char* filename)
     char line[MAX_LINE];
     while (fgets(line, MAX_LINE, fp))
     {
-        line[strcspn(line, "\n;")] = 0;
+        line[strcspn(line, "\n;/")] = 0;
         if (strlen(line) > 0)
         {
             assemble_line(line);
         }
+        ++line_num;
     }
     fclose(fp);
+}
+static int parse_modifier(const char* str, int* value)
+{
+    if (toupper(str[0]) == 'R' || toupper(str[0]) == 'P')
+    {
+        char* end;
+        long num = strtol(str + 1, &end, 10);
+        if (*end != '\0' || num < 0)
+        {
+            return 0;
+        }
+        if (toupper(str[0]) == 'R' && num <= 15)
+        {
+            *value = num;
+            return 1;
+        }
+        if (toupper(str[0]) == 'P' && num <= 3)
+        {
+            *value = num * 2;
+            return 1;
+        }
+        return 0;
+    }
+
+    if (str[0] == '%')
+    {
+        char* end;
+        long num = strtol(str + 1, &end, 2);
+        if (*end != '\0' || num < 0 || num > 255) return 0;
+        *value = num;
+        return 1;
+    }
+
+    if (str[0] == '$')
+    {
+        char* end;
+        long num = strtol(str + 1, &end, 16);
+        if (*end != '\0' || num < 0 || num > 255) return 0;
+        *value = num;
+        return 1;
+    }
+
+    char* end;
+    long num = strtol(str, &end, 10);
+    if (*end != '\0' || num < 0 || num > 255) return 0;
+    *value = num;
+    return 1;
 }
 
 void assemble_line(char* line)
 {
-    char mnemonic[8];
+    char mnemonic[8], mod1_str[16], mod2_str[16];
     int mod1, mod2;
     int inst_idx;
 
-    int num_mods = sscanf_s(line, "%s %x %x", mnemonic, 8, &mod1, &mod2);
+    while (isspace(*line))
+    {
+        line++;
+    }
+    int len = strlen(line);
+    while (len > 0 && isspace(line[len - 1]))
+    {
+        line[--len] = 0;
+    }
+
+    int num_mods = sscanf(line, "%s %[^,],%s", mnemonic, mod1_str, mod2_str);
+    if (num_mods < 1) return;
+
+
+    if (num_mods == 1)
+    {
+        num_mods = sscanf(line, "%s %s", mnemonic, mod1_str);
+    }
 
     inst_idx = find_instruction(mnemonic);
     if (inst_idx == -1)
@@ -171,6 +243,21 @@ void assemble_line(char* line)
     if ((num_mods - 1) < inst->num_modifiers)
     {
         error("Too few modifiers");
+    }
+
+    if (inst->num_modifiers > 0)
+    {
+        if (!parse_modifier(mod1_str, &mod1))
+        {
+            error("Invalid modifier 1");
+        }
+        if (inst->num_modifiers > 1)
+        {
+            if (!parse_modifier(mod2_str, &mod2))
+            {
+                error("Invalid modifier 2");
+            }
+        }
     }
 
     switch (inst->word0_format)
@@ -231,5 +318,6 @@ int main(int argc, char* argv[])
     }
     assemble_file(argv[1]);
     save_output(argv[2]);
+
     return 0;
 }

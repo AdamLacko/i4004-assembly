@@ -1,4 +1,5 @@
-﻿#include <stdio.h>
+﻿#include "asm.h"
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -86,7 +87,7 @@ Instruction instructions[] =
 unsigned char code[MAX_CODE];
 int code_pos = 0;
 
-void error(const char* msg)
+static void error(const char* msg)
 {
     printf("Error: %s\n", msg);
     exit(1);
@@ -99,8 +100,7 @@ static void print_help()
 {
     printf("Usage: asm [OPTIONS] <INPUT_FILE> <OUTPUT_FILE>\n\nOptions:\n--help        Show this help message and exit.\n--version     Show version and exit.\n");
 }
-
-int find_instruction(const char* mnemonic)
+static int find_instruction(const char* mnemonic)
 {
     for (int i = 0; instructions[i].mnemonic; i++)
     {
@@ -111,8 +111,7 @@ int find_instruction(const char* mnemonic)
     }
     return -1;
 }
-
-void emit_byte(unsigned char byte)
+static void emit_byte(unsigned char byte)
 {
     if (code_pos >= MAX_CODE)
     {
@@ -120,16 +119,34 @@ void emit_byte(unsigned char byte)
     }
     code[code_pos++] = byte;
 }
-void check_operand_num(int num, int expected)
+static void save_output(const char* filename)
 {
-    if (num < expected)
+    FILE* fp = fopen(filename, "wb");
+    if (!fp)
     {
-        error("Too few operands");
+        error("Cannot open output file");
     }
-    if (num > expected)
+    fwrite(code, 1, code_pos, fp);
+    fclose(fp);
+}
+static void assemble_file(const char* filename)
+{
+    FILE* fp = fopen(filename, "r");
+    if (!fp)
     {
-        error("Too many operands");
+        error("Cannot open input file");
     }
+
+    char line[MAX_LINE];
+    while (fgets(line, MAX_LINE, fp))
+    {
+        line[strcspn(line, "\n;")] = 0;
+        if (strlen(line) > 0)
+        {
+            assemble_line(line);
+        }
+    }
+    fclose(fp);
 }
 
 void assemble_line(char* line)
@@ -190,37 +207,6 @@ void assemble_line(char* line)
     default:
         break;
     }
-}
-
-void assemble_file(const char* filename)
-{
-    FILE* fp = fopen(filename, "r");
-    if (!fp)
-    {
-        error("Cannot open input file");
-    }
-
-    char line[MAX_LINE];
-    while (fgets(line, MAX_LINE, fp))
-    {
-        line[strcspn(line, "\n;")] = 0;
-        if (strlen(line) > 0)
-        {
-            assemble_line(line);
-        }
-    }
-    fclose(fp);
-}
-
-void save_output(const char* filename)
-{
-    FILE* fp = fopen(filename, "wb");
-    if (!fp)
-    {
-        error("Cannot open output file");
-    }
-    fwrite(code, 1, code_pos, fp);
-    fclose(fp);
 }
 
 int main(int argc, char* argv[])
